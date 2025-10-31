@@ -25,9 +25,6 @@ Você é um assistente de agendamento. Você recebeu a CONVERSA entre o Cliente 
 2. Não mencione as "informações auxiliares" ou a palavra "JSON" na sua resposta.
 3. Se a lista de informações estiver vazia, informe ao cliente que não encontrou o que ele pediu e pergunte se ele gostaria de tentar de outra forma.
 
-## Conversa ##
-{$conversation_history}
-
 ## Informações Auxiliares ##
 {$api_data}
 PROMPT;
