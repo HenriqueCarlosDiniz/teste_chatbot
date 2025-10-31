@@ -15,7 +15,8 @@ Directory structure:
     │   ├── Adapters/
     │   │   ├── Ai/
     │   │   │   ├── AiAdapterInterface.php
-    │   │   │   └── ChatGPTAdapter.php
+    │   │   │   ├── ChatGPTAdapter.php
+    │   │   │   └── PrismAdapter.php
     │   │   └── Messaging/
     │   │       ├── MessagingAdapterInterface.php
     │   │       ├── WebAdapter.php
@@ -114,6 +115,7 @@ Directory structure:
     │   ├── filesystems.php
     │   ├── logging.php
     │   ├── mail.php
+    │   ├── prism.php
     │   ├── queue.php
     │   ├── reverb.php
     │   ├── sanctum.php
@@ -287,6 +289,7 @@ FILE: composer.json
         "laravel/telescope": "^5.11",
         "laravel/tinker": "^2.10.1",
         "predis/predis": "^3.2",
+        "prism-php/prism": "^0.97.0",
         "spatie/laravel-data": "^4.17"
     },
     "require-dev": {
@@ -742,12 +745,7 @@ AWS_USE_PATH_STYLE_ENDPOINT=false
 #VITE_PUSHER_PORT="${PUSHER_PORT}"
 #VITE_PUSHER_SCHEME="${PUSHER_SCHEME}"
 
-<<<<<<< HEAD
 OPENAI_API_KEY=
-=======
-OPENAI_API_KEY=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
-#OPENAI_API_KEY=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
->>>>>>> d5393634cd4a3dca8711b0c8d24d6ce17875667c
 OPENAI_MODEL=gpt-4.1-mini
 
 AI_ADAPTER=chatgpt
@@ -786,22 +784,17 @@ FILE: app/Adapters/Ai/AiAdapterInterface.php
 
 namespace App\Adapters\Ai;
 
-/**
- * Interface AiAdapterInterface
- *
- * Define o contrato que todos os adaptadores de serviços de IA devem seguir.
- */
 interface AiAdapterInterface
 {
     /**
-     * Envia um prompt para a IA e retorna a resposta.
+     * Obtém uma resposta de chat do provedor de IA.
      *
-     * @param string $prompt O prompt completo a ser enviado para a IA.
-     * @param string $sessionId Um identificador único para a sessão, para manter o contexto se necessário.
-     * @param array $context O histórico da conversa (opcional).
-     * @return string A resposta gerada pela IA.
+     * @param string $prompt O prompt principal (mensagem do sistema ou instrução).
+     * @param array $history O histórico da conversa (array de arrays associativos).
+     * @param bool $expect_json Define se a resposta DEVE ser um JSON.
+     * @return string A resposta em texto da IA (seja texto simples ou uma string JSON).
      */
-    public function getChat(string $prompt, string $sessionId, array $context = []): string;
+    public function getChat(string $prompt, array $history = [], bool $expect_json = false): string;
 }
 
 
@@ -872,6 +865,68 @@ class ChatGPTAdapter implements AiAdapterInterface
 
         return 'Desculpe, não consegui processar sua solicitação no momento. Tente novamente mais tarde.';
     }
+}
+
+
+
+================================================
+FILE: app/Adapters/Ai/PrismAdapter.php
+================================================
+<?php
+
+namespace App\Adapters\Ai;
+
+use Prism\Prism\Facades\Prism;
+use Prism\Prism\Enums\Provider;
+
+class PrismAdapter implements AiAdapterInterface
+{
+    public function getChat(string $prompt, array $history = [], bool $expect_json = false): string
+    {
+        // Constrói a chamada base do Prism
+        // Você pode tornar o provedor e o modelo configuráveis (via config/prism.php)
+        $chat = Prism::text()
+            ->using(Provider::OpenAI, 'gpt-4o') // Ou qualquer modelo que preferir
+            ->withSystemPrompt($prompt);
+
+        // Adiciona o histórico, se houver
+        if (!empty($history)) {
+            // O Prism pode precisar que o histórico seja formatado
+            // (ex: $chat->withHistory($this->formatHistory($history)))
+            // Por enquanto, vamos assumir que `withMessages` funcione
+            // Nota: Verifique a documentação do Prism para a melhor forma de
+            // injetar o histórico (ex: `->withMessages([...])`)
+            $chat->withMessages($history); // Ajuste conforme a API do Prism
+        }
+
+        if ($expect_json) {
+            // É AQUI QUE O PRISM RESOLVE SEU PROBLEMA
+            // Ele lidará com a formatação da requisição para forçar um JSON
+            $response = $chat->asJson();
+            return $response->content(); // ou $response->json()
+        }
+
+        // Para texto simples (ex: "sim", "não")
+        $response = $chat->asText();
+        return $response->text(); // ou $response->content()
+    }
+
+    /*
+    // Você pode precisar de um helper para formatar o histórico
+    // para o formato que o Prism espera
+    private function formatHistory(array $history): array
+    {
+        $formatted = [];
+        foreach ($history as $message) {
+            if ($message['role'] === 'user') {
+                $formatted[] = \Prism\Prism\Messages\UserMessage::from($message['content']);
+            } elseif ($message['role'] === 'model') {
+                $formatted[] = \Prism\Prism\Messages\AssistantMessage::from($message['content']);
+            }
+        }
+        return $formatted;
+    }
+    */
 }
 
 
@@ -1186,7 +1241,7 @@ class ConversationAnalyzerService
         $history = $session->getFormattedHistory();
         $prompt_text = $this->prompt->build($message, $history);
 
-        $raw_response = $this->ai_adapter->getChat($prompt_text, $session->id);
+        $raw_response = $this->ai_adapter->getChat($prompt_text, $history, true);
 
         $json_data = $this->extractJsonFromString($raw_response);
 
@@ -4226,6 +4281,7 @@ namespace App\Providers;
 
 use App\Adapters\Ai\AiAdapterInterface;
 use App\Adapters\Ai\ChatGPTAdapter;
+use App\Adapters\Ai\PrismAdapter;
 use App\Adapters\Messaging\MessagingAdapterInterface;
 use App\Adapters\Messaging\WebAdapter;
 use App\Adapters\Messaging\WhatsAppAdapter;
@@ -4245,13 +4301,7 @@ class ChatbotServiceProvider extends ServiceProvider
     {
         // --- REGISTO DOS ADAPTADORES ---
         $this->app->singleton(AiAdapterInterface::class, function ($app) {
-            $adapter = config('services.ai.adapter');
-            switch ($adapter) {
-                case 'chatgpt':
-                    return new ChatGPTAdapter();
-                default:
-                    throw new InvalidArgumentException("Adaptador de IA inválido: {$adapter}");
-            }
+            return new PrismAdapter();
         });
 
         $this->app->singleton(MessagingAdapterInterface::class, function ($app) {
@@ -4772,6 +4822,17 @@ FILE: bootstrap/cache/packages.php
       0 => 'Termwind\\Laravel\\TermwindServiceProvider',
     ),
   ),
+  'prism-php/prism' => 
+  array (
+    'aliases' => 
+    array (
+      'PrismServer' => 'Prism\\Prism\\Facades\\PrismServer',
+    ),
+    'providers' => 
+    array (
+      0 => 'Prism\\Prism\\PrismServiceProvider',
+    ),
+  ),
   'spatie/laravel-data' => 
   array (
     'providers' => 
@@ -4828,11 +4889,12 @@ FILE: bootstrap/cache/services.php
     30 => 'Carbon\\Laravel\\ServiceProvider',
     31 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
     32 => 'Termwind\\Laravel\\TermwindServiceProvider',
-    33 => 'Spatie\\LaravelData\\LaravelDataServiceProvider',
-    34 => 'Spatie\\StructureDiscoverer\\StructureDiscovererServiceProvider',
-    35 => 'App\\Providers\\AppServiceProvider',
-    36 => 'App\\Providers\\ChatbotServiceProvider',
-    37 => 'App\\Providers\\TelescopeServiceProvider',
+    33 => 'Prism\\Prism\\PrismServiceProvider',
+    34 => 'Spatie\\LaravelData\\LaravelDataServiceProvider',
+    35 => 'Spatie\\StructureDiscoverer\\StructureDiscovererServiceProvider',
+    36 => 'App\\Providers\\AppServiceProvider',
+    37 => 'App\\Providers\\ChatbotServiceProvider',
+    38 => 'App\\Providers\\TelescopeServiceProvider',
   ),
   'eager' => 
   array (
@@ -4853,11 +4915,12 @@ FILE: bootstrap/cache/services.php
     14 => 'Carbon\\Laravel\\ServiceProvider',
     15 => 'NunoMaduro\\Collision\\Adapters\\Laravel\\CollisionServiceProvider',
     16 => 'Termwind\\Laravel\\TermwindServiceProvider',
-    17 => 'Spatie\\LaravelData\\LaravelDataServiceProvider',
-    18 => 'Spatie\\StructureDiscoverer\\StructureDiscovererServiceProvider',
-    19 => 'App\\Providers\\AppServiceProvider',
-    20 => 'App\\Providers\\ChatbotServiceProvider',
-    21 => 'App\\Providers\\TelescopeServiceProvider',
+    17 => 'Prism\\Prism\\PrismServiceProvider',
+    18 => 'Spatie\\LaravelData\\LaravelDataServiceProvider',
+    19 => 'Spatie\\StructureDiscoverer\\StructureDiscovererServiceProvider',
+    20 => 'App\\Providers\\AppServiceProvider',
+    21 => 'App\\Providers\\ChatbotServiceProvider',
+    22 => 'App\\Providers\\TelescopeServiceProvider',
   ),
   'deferred' => 
   array (
@@ -4939,6 +5002,7 @@ FILE: bootstrap/cache/services.php
     'Illuminate\\Foundation\\Console\\ChannelMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
     'Illuminate\\Foundation\\Console\\ClassMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
     'Illuminate\\Foundation\\Console\\ComponentMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
+    'Illuminate\\Foundation\\Console\\ConfigMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
     'Illuminate\\Foundation\\Console\\ConfigPublishCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
     'Illuminate\\Foundation\\Console\\ConsoleMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
     'Illuminate\\Routing\\Console\\ControllerMakeCommand' => 'Illuminate\\Foundation\\Providers\\ConsoleSupportServiceProvider',
@@ -6049,6 +6113,75 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+];
+
+
+
+================================================
+FILE: config/prism.php
+================================================
+<?php
+
+return [
+    'prism_server' => [
+        // The middleware that will be applied to the Prism Server routes.
+        'middleware' => [],
+        'enabled' => env('PRISM_SERVER_ENABLED', false),
+    ],
+    'providers' => [
+        'openai' => [
+            'url' => env('OPENAI_URL', 'https://api.openai.com/v1'),
+            'api_key' => env('OPENAI_API_KEY', ''),
+            'organization' => env('OPENAI_ORGANIZATION', null),
+            'project' => env('OPENAI_PROJECT', null),
+        ],
+        'anthropic' => [
+            'api_key' => env('ANTHROPIC_API_KEY', ''),
+            'version' => env('ANTHROPIC_API_VERSION', '2023-06-01'),
+            'default_thinking_budget' => env('ANTHROPIC_DEFAULT_THINKING_BUDGET', 1024),
+            // Include beta strings as a comma separated list.
+            'anthropic_beta' => env('ANTHROPIC_BETA', null),
+        ],
+        'ollama' => [
+            'url' => env('OLLAMA_URL', 'http://localhost:11434'),
+        ],
+        'mistral' => [
+            'api_key' => env('MISTRAL_API_KEY', ''),
+            'url' => env('MISTRAL_URL', 'https://api.mistral.ai/v1'),
+        ],
+        'groq' => [
+            'api_key' => env('GROQ_API_KEY', ''),
+            'url' => env('GROQ_URL', 'https://api.groq.com/openai/v1'),
+        ],
+        'xai' => [
+            'api_key' => env('XAI_API_KEY', ''),
+            'url' => env('XAI_URL', 'https://api.x.ai/v1'),
+        ],
+        'gemini' => [
+            'api_key' => env('GEMINI_API_KEY', ''),
+            'url' => env('GEMINI_URL', 'https://generativelanguage.googleapis.com/v1beta/models'),
+        ],
+        'deepseek' => [
+            'api_key' => env('DEEPSEEK_API_KEY', ''),
+            'url' => env('DEEPSEEK_URL', 'https://api.deepseek.com/v1'),
+        ],
+        'elevenlabs' => [
+            'api_key' => env('ELEVENLABS_API_KEY', ''),
+            'url' => env('ELEVENLABS_URL', 'https://api.elevenlabs.io/v1/'),
+        ],
+        'voyageai' => [
+            'api_key' => env('VOYAGEAI_API_KEY', ''),
+            'url' => env('VOYAGEAI_URL', 'https://api.voyageai.com/v1'),
+        ],
+        'openrouter' => [
+            'api_key' => env('OPENROUTER_API_KEY', ''),
+            'url' => env('OPENROUTER_URL', 'https://openrouter.ai/api/v1'),
+            'site' => [
+                'http_referer' => env('OPENROUTER_SITE_HTTP_REFERER', null),
+                'x_title' => env('OPENROUTER_SITE_X_TITLE', null),
+            ],
+        ],
+    ],
 ];
 
 
