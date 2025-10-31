@@ -2,20 +2,15 @@
 
 namespace App\Adapters\Ai;
 
-/**
- * Interface AiAdapterInterface
- *
- * Define o contrato que todos os adaptadores de serviços de IA devem seguir.
- */
 interface AiAdapterInterface
 {
     /**
-     * Envia um prompt para a IA e retorna a resposta.
+     * Obtém uma resposta de chat do provedor de IA.
      *
-     * @param string $prompt O prompt completo a ser enviado para a IA.
-     * @param string $sessionId Um identificador único para a sessão, para manter o contexto se necessário.
-     * @param array $context O histórico da conversa (opcional).
-     * @return string A resposta gerada pela IA.
+     * @param string $prompt O prompt principal (mensagem do sistema ou instrução).
+     * @param array $history O histórico da conversa (array de arrays associativos).
+     * @param bool $expect_json Define se a resposta DEVE ser um JSON.
+     * @return string A resposta em texto da IA (seja texto simples ou uma string JSON).
      */
-    public function getChat(string $prompt, string $sessionId, array $context = []): string;
+    public function getChat(string $prompt, array $history = [], bool $expect_json = false): string;
 }

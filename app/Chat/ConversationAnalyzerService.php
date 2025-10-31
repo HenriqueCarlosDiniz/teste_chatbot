@@ -22,7 +22,7 @@ class ConversationAnalyzerService
         $history = $session->getFormattedHistory();
         $prompt_text = $this->prompt->build($message, $history);
 
-        $raw_response = $this->ai_adapter->getChat($prompt_text, $session->id);
+        $raw_response = $this->ai_adapter->getChat($prompt_text, $history, true);
 
         $json_data = $this->extractJsonFromString($raw_response);
 
