@@ -30,14 +30,18 @@ class FunctionResponseFormatterService
     public function format(array $data, ChatSession $session): string
     {
         $json_data = json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
-        $history = $session->getFormattedHistory();
+        $history_array = $session->getHistoryAsArray();
 
-        $prompt_text = $this->prompt->build($json_data, $history);
+        $prompt_text = $this->prompt->build($json_data);
 
         // O adapter de IA precisa ser configurado com o prompt de sistema do "ATENDENTE"
         // para manter a persona correta ao gerar a resposta.
         $system_prompt = app(Prompts\AttendantPrompt::class)->build();
 
-        return $this->ai_adapter->getChat($prompt_text, $session->id, [], $system_prompt);
+        return $this->ai_adapter->getChat(
+            $system_prompt . "\n\n" . $prompt_text,
+            $history_array,
+            false // Pede TEXTO
+        );
     }
 }

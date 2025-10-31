@@ -11,7 +11,7 @@ class FunctionResponseFormatterPrompt
      * @param string $conversation_history O histórico da conversa.
      * @return string O prompt formatado.
      */
-    public function build(string $api_data, string $conversation_history): string
+    public function build(string $api_data): string
     {
         return <<<PROMPT
 ## Contexto ##

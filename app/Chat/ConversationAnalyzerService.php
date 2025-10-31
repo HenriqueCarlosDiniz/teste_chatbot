@@ -19,10 +19,14 @@ class ConversationAnalyzerService
 
     public function analyze(string $message, ChatSession $session): ConversationAnalysisDTO
     {
-        $history = $session->getFormattedHistory();
-        $prompt_text = $this->prompt->build($message, $history);
+        $history_array = $session->getHistoryAsArray();
+        $prompt_text = $this->prompt->build($message);
 
-        $raw_response = $this->ai_adapter->getChat($prompt_text, $history, true);
+        $raw_response = $this->ai_adapter->getChat(
+            $prompt_text,
+            $history_array,
+            true // Força a resposta JSON
+        );
 
         $json_data = $this->extractJsonFromString($raw_response);
 
