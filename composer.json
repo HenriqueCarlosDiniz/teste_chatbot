@@ -13,7 +13,6 @@
         "laravel/telescope": "^5.11",
         "laravel/tinker": "^2.10.1",
         "predis/predis": "^3.2",
-        "prism-php/prism": "^0.97.0",
         "spatie/laravel-data": "^4.17"
     },
     "require-dev": {

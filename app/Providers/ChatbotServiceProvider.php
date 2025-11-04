@@ -4,7 +4,6 @@ namespace App\Providers;
 
 use App\Adapters\Ai\AiAdapterInterface;
 use App\Adapters\Ai\ChatGPTAdapter;
-use App\Adapters\Ai\PrismAdapter;
 use App\Adapters\Messaging\MessagingAdapterInterface;
 use App\Adapters\Messaging\WebAdapter;
 use App\Adapters\Messaging\WhatsAppAdapter;
@@ -24,7 +23,13 @@ class ChatbotServiceProvider extends ServiceProvider
     {
         // --- REGISTO DOS ADAPTADORES ---
         $this->app->singleton(AiAdapterInterface::class, function ($app) {
-            return new PrismAdapter();
+            $adapter = config('services.ai.adapter');
+            switch ($adapter) {
+                case 'chatgpt':
+                    return new ChatGPTAdapter();
+                default:
+                    throw new InvalidArgumentException("Adaptador de IA inválido: {$adapter}");
+            }
         });
 
         $this->app->singleton(MessagingAdapterInterface::class, function ($app) {

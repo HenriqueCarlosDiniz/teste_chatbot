@@ -59,25 +59,6 @@ class ChatSession extends Model
         return $formatted;
     }
 
-
-    /**
-     *
-     * @return array
-     */
-    public function getHistoryAsArray(): array
-    {
-        $history = $this->history ?? [];
-
-        // Garante que o formato é o esperado pela API (role/content)
-        // e que o 'bot' é mapeado para 'assistant'.
-        return array_map(function ($entry) {
-            return [
-                'role' => ($entry['role'] === 'bot' || $entry['role'] === 'assistant') ? 'assistant' : 'user',
-                'content' => $entry['content']
-            ];
-        }, array_slice($history, -5)); // Limita o histórico passado para a IA
-    }
-
     /**
      * Adiciona uma entrada ao histórico e limita às últimas 5 para otimização.
      *

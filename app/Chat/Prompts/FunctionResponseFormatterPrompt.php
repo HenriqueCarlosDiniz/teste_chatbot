@@ -11,7 +11,7 @@ class FunctionResponseFormatterPrompt
      * @param string $conversation_history O histórico da conversa.
      * @return string O prompt formatado.
      */
-    public function build(string $api_data): string
+    public function build(string $api_data, string $conversation_history): string
     {
         return <<<PROMPT
 ## Contexto ##
@@ -24,6 +24,9 @@ Você é um assistente de agendamento. Você recebeu a CONVERSA entre o Cliente 
 1. A resposta deve ser em linguagem natural, como se fosse um atendente humano.
 2. Não mencione as "informações auxiliares" ou a palavra "JSON" na sua resposta.
 3. Se a lista de informações estiver vazia, informe ao cliente que não encontrou o que ele pediu e pergunte se ele gostaria de tentar de outra forma.
+
+## Conversa ##
+{$conversation_history}
 
 ## Informações Auxiliares ##
 {$api_data}

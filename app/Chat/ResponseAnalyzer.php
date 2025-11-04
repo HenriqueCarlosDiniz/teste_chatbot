@@ -39,7 +39,7 @@ class ResponseAnalyzer
     public function isAffirmative(string $message): bool
     {
         $prompt = $this->isAffirmativePrompt->build($message);
-        $response = $this->ai->getChat($prompt, [], false);
+        $response = $this->ai->getChat($prompt, 'analyzer_affirmative');
         Log::info('[ResponseAnalyzer] Verificação afirmativa.', ['message' => $message, 'response' => $response]);
         return str_contains(strtolower($response), 'sim');
     }
@@ -53,7 +53,7 @@ class ResponseAnalyzer
     public function isNegative(string $message): bool
     {
         $prompt = $this->isNegativePrompt->build($message);
-        $response = $this->ai->getChat($prompt, [], false);
+        $response = $this->ai->getChat($prompt, 'analyzer_negative');
         Log::info('[ResponseAnalyzer] Verificação negativa.', ['message' => $message, 'response' => $response]);
         return str_contains(strtolower($response), 'sim');
     }
@@ -67,7 +67,7 @@ class ResponseAnalyzer
     public function isAQuestion(string $message): bool
     {
         $prompt = $this->isQuestionPrompt->build($message);
-        $response = $this->ai->getChat($prompt, [], false);
+        $response = $this->ai->getChat($prompt, 'analyzer_question');
         Log::info('[ResponseAnalyzer] Verificação de pergunta.', ['message' => $message, 'response' => $response]);
         return str_contains(strtolower($response), 'sim');
     }

@@ -40,11 +40,7 @@ class BookingApplication implements ChatApplicationInterface
         }
 
         $prompt = "A mensagem do usuário demonstra a intenção de agendar, marcar, reservar ou verificar a disponibilidade de um serviço? Responda apenas com 'sim' ou 'não'. Mensagem: \"$message\"";
-        $response = trim(strtolower($this->ai_adapter->getChat(
-            $prompt,
-            $session->getHistoryAsArray(), // Passa o histórico
-            false // Pede TEXTO
-        )));
+        $response = trim(strtolower($this->ai_adapter->getChat($prompt, $session->id)));
 
         $should_handle = $response === 'sim';
         Log::info('[BookingApplication] Verificação de intenção de agendamento.', ['response' => $response, 'should_handle' => $should_handle]);

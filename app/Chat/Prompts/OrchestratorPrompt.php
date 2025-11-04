@@ -11,7 +11,7 @@ class OrchestratorPrompt
      * @param string $history O histórico formatado da conversa.
      * @return string O prompt formatado.
      */
-    public function build(string $user_message): string
+    public function build(string $user_message, string $history = ''): string
     {
         $possible_intents = implode("', '", [
             'agendamento',
@@ -41,7 +41,7 @@ Forneça a resposta APENAS em formato JSON: {"intent": "categoria", "confidence"
 '{$possible_intents}'
 
 ## Histórico ##
-(O histórico da conversa é injetado separadamente pela aplicação)
+{$history}
 
 MENSAGEM DO CLIENTE: "{$user_message}"
 PROMPT;
