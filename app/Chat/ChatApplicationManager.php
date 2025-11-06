@@ -32,6 +32,31 @@ class ChatApplicationManager
             return $active_app->handle($message, $session);
         }
 
+        // --- INÍCIO DA NOVA LÓGICA ---
+        // Prioridade 1.5: Verificar agendamentos existentes NO INÍCIO da conversa (se tiver telefone)
+        // Verificamos se $session->state está vazio (conversa nova) E se temos um phone_number
+        if (empty($session->state) && $session->phone_number) {
+            Log::info('[Manager] Sessão nova com telefone. Verificando agendamentos existentes.', ['phone' => $session->phone_number]);
+
+            // Vamos instanciar o SchedulingService para verificar
+            $scheduling_service = $this->container->make(SchedulingService::class);
+            $appointment = $scheduling_service->buscarAgendamentoPorTelefone($session->phone_number);
+
+            if (!empty($appointment) && ($appointment['sucesso'] ?? false)) {
+                Log::info('[Manager] Agendamento existente encontrado. Iniciando ExistingAppointmentApplication.', ['phone' => $session->phone_number]);
+
+                // Encontrámos um agendamento. Vamos forçar o início da aplicação correta.
+                // A "ExistingAppointmentApplication" é mapeada para estas intenções.
+                $application = $this->getApplicationForIntent('consultar_agendamento');
+                if ($application) {
+                    // O "handle" desta aplicação irá encontrar e apresentar o agendamento
+                    return $application->handle($message, $session);
+                }
+            } else {
+                 Log::info('[Manager] Nenhum agendamento encontrado para este telefone. Continuando fluxo normal.', ['phone' => $session->phone_number]);
+            }
+        }
+
         // Prioridade 2: Orquestrar uma nova intenção se nenhum fluxo estiver ativo.
         $analysis = $this->conversation_analyzer->analyze($message, $session);
         Log::info("[Manager] Intenção classificada pelo orquestrador: {$analysis->intent}");
@@ -57,21 +82,45 @@ class ChatApplicationManager
      */
     protected function getActiveStatefulApplication(ChatSession $session): ?ChatApplicationInterface
     {
-        $flow = $session->state['flow'] ?? null;
+        $active_class = $session->current_application;
 
-        // Mapeia os nomes dos fluxos que devem persistir entre as mensagens.
-        $stateful_flows = [
-            'booking' => BookingApplication::class,
-            'existing_appointment' => ExistingAppointmentApplication::class,
-        ];
+        if ($active_class) {
+            Log::info("[Manager] Verificando aplicação ativa pela coluna 'current_application'.", ['class' => $active_class]);
 
-        if ($flow && isset($stateful_flows[$flow])) {
-            $class = $stateful_flows[$flow];
-            if ($this->container->has($class)) {
-                return $this->container->make($class);
+            $stateful_classes = [
+                BookingApplication::class,
+                ExistingAppointmentApplication::class,
+            ];
+
+            if (in_array($active_class, $stateful_classes) && $this->container->has($active_class)) {
+                return $this->container->make($active_class);
             }
         }
 
+        $flow = $session->state['flow'] ?? null;
+        // Fallback (Prioridade 2): Verificar a lógica antiga (state['flow'])
+        // Isto mantém a compatibilidade com o ExistingAppointmentApplication
+
+        if ($flow) {
+            Log::info("[Manager] Verificando aplicação ativa pela chave antiga 'state[flow]'.", ['flow' => $flow]);
+
+            $stateful_flows = [
+                'booking' => BookingApplication::class,
+                'existing_appointment' => ExistingAppointmentApplication::class,
+            ];
+
+            if (isset($stateful_flows[$flow])) {
+                $class_from_flow = $stateful_flows[$flow];
+                if ($this->container->has($class_from_flow)) {
+                    // Sincroniza a nova coluna para migrar da lógica antiga
+                    $session->current_application = $class_from_flow;
+                    $session->save();
+                    return $this->container->make($class_from_flow);
+                }
+            }
+        }
+
+        Log::info('[Manager] Nenhuma aplicação com estado ativa foi encontrada.');
         return null;
     }
 

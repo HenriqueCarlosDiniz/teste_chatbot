@@ -11,7 +11,7 @@ class LocationDTO extends Data
 {
     public function __construct(
         #[Required]
-        #[In(['state', 'cep', 'unknown'])]
+        #[In(['state', 'city', 'neighborhood', 'cep', 'unknown'])]
         public string $type,
 
         #[Nullable]

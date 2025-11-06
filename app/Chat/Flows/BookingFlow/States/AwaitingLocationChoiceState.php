@@ -31,68 +31,83 @@ class AwaitingLocationChoiceState extends AbstractStateHandler implements StateH
             'unidades_em_contexto' => count($current_units)
         ]);
 
-        // Lógica para escolha por número (mais rápido e direto)
+        // Prioridade 1: Escolha por número
         if (is_numeric(trim($message))) {
             $index = intval(trim($message)) - 1;
             if (isset($current_units[$index])) {
-                Log::info('[AwaitingLocationChoiceState] Usuário escolheu por número.', ['index' => $index, 'unidade' => $current_units[$index]['nomeFranquia']]);
-                return $this->proceedToDateTime($session, $current_units[$index]);
+                $chosen_unit = $current_units[$index];
+
+                // Salva o ID da unidade na coluna dedicada
+                $session->selected_unit_id = $chosen_unit['grupoFranquia'];
+
+                return $this->proceedToDateTime($session, $chosen_unit);
             }
         }
 
-        // Nova lógica: Usa o extrator de entidades para entender a escolha
+        // --- LÓGICA RESTAURADA ---
+
+        // Prioridade 2: Lógica para escolha por nome ou refinamento (bairro)
+        // Usamos o extractEntities, que retorna um "unit_name" (que pode ser um nome ou um bairro)
+        // Usamos o histórico para dar contexto à IA
         $entities = $this->prompt_manager->extractEntities($message, $session->id, $session->getFormattedHistory());
-        Log::info('[AwaitingLocationChoiceState] Entidades extraídas da mensagem.', ['entities' => $entities?->toArray()]);
+        $string_busca = $entities->unit_name; // Ex: "Santana" ou "Pinheiros"
 
-        $chosen_unit_name = $entities->unit_name ?? $entities->location_value; // Pode ser nome da unidade ou um bairro para refinar
+        if ($string_busca) {
+            Log::info('[AwaitingLocationChoiceState] Tentando encontrar unidade por nome ou bairro.', ['busca' => $string_busca]);
 
-        if ($chosen_unit_name) {
-            $normalized_choice = Str::ascii(Str::lower($chosen_unit_name));
-            Log::info('[AwaitingLocationChoiceState] Tentando encontrar unidade por nome/localização.', ['escolha_normalizada' => $normalized_choice]);
+            $found_by_name = null;
+            $refined_units_by_bairro = [];
 
-            // Tenta encontrar a unidade exata pelo nome
             foreach ($current_units as $unit) {
-                $franchise_name = $unit['nomeFranquia'];
-                $normalized_franchise_name = Str::ascii(Str::lower($franchise_name));
-                if (Str::contains($normalized_franchise_name, $normalized_choice)) {
-                    Log::info('[AwaitingLocationChoiceState] Unidade correspondente encontrada.', ['unidade' => $franchise_name]);
-                    return $this->proceedToDateTime($session, $unit);
+                // 1. Verifica se é um match direto com o NOME da unidade
+                if (Str::contains(Str::lower($unit['nomeFranquia']), Str::lower($string_busca))) {
+                    $found_by_name = $unit;
+                    break; // Encontrou um match direto, esta é a prioridade
+                }
+
+                // 2. Se não for, verifica se é um match com o BAIRRO (para refinar a lista)
+                // Esta é a parte que tinha sido removida
+                if (Str::contains(Str::lower($unit['bairroFranquia']), Str::lower($string_busca))) {
+                    $refined_units_by_bairro[] = $unit;
                 }
             }
 
-            Log::info('[AwaitingLocationChoiceState] Nenhuma unidade exata encontrada. Verificando se é um refinamento de busca.');
-            // CORREÇÃO: Se não encontrou uma unidade, verifica se o usuário
-            // tentou refinar a busca com um bairro ou cidade.
-            if ($entities->location_type === 'neighborhood' || $entities->location_type === 'city') {
-                // Filtra a lista atual de unidades com o novo critério.
-                $bairro_filtro = $entities->location_type === 'neighborhood' ? $chosen_unit_name : null;
-                $cidade_filtro = $entities->location_type === 'city' ? $chosen_unit_name : null;
+            // Se encontrou um match direto com o nome, seleciona
+            if ($found_by_name) {
+                $session->selected_unit_id = $found_by_name['grupoFranquia'];
+                return $this->proceedToDateTime($session, $found_by_name);
+            }
 
-                Log::info('[AwaitingLocationChoiceState] Refinando busca com novos critérios.', ['bairro' => $bairro_filtro, 'cidade' => $cidade_filtro]);
-                $refined_units = $this->scheduling_service->filtrarUnidades($current_units, bairro: $bairro_filtro, cidade: $cidade_filtro);
-                Log::info('[AwaitingLocationChoiceState] Resultado do refinamento.', ['unidades_encontradas' => count($refined_units)]);
-
-                if (!empty($refined_units)) {
-                    // Apresenta a nova lista refinada para o usuário.
-                    return $this->formatUnitList($session, $refined_units, "em {$chosen_unit_name}");
-                }
+            // Se não, se encontrou matches de bairro, refina a lista
+            if (!empty($refined_units_by_bairro)) {
+                $this->updateData($session, ['unidades_filtradas' => array_values($refined_units_by_bairro)]);
+                return $this->formatUnitList($session, $refined_units_by_bairro, "no bairro {$string_busca}");
             }
         }
+        // --- FIM DA LÓGICA RESTAURADA ---
 
         Log::warning('[AwaitingLocationChoiceState] Não foi possível interpretar a escolha do usuário.', ['message' => $message]);
-        return "Não consegui entender. Por favor, digite o **número** da unidade que você deseja ou um **bairro** para refinar a busca.";
+        return "Não consegui entender. Por favor, digite o **número** da unidade que você deseja ou um **bairro/cidade** para refinar a busca.";
     }
 
     private function proceedToDateTime(ChatSession $session, array $chosen_unit): string
     {
+        // Esta função é chamada DEPOIS de $session->selected_unit_id já ter sido definido.
+        // O updateData aqui salva o JSON `chosen_unit` e o `selected_unit_id` (do objeto $session)
+        // de uma só vez no banco de dados.
         $this->updateData($session, ['chosen_unit' => $chosen_unit]);
         $this->updateState($session, BookingState::AWAITING_DATE_TIME);
+
         $available_slots = $this->scheduling_service->obterHorariosDisponiveisPorPeriodo($chosen_unit['grupoFranquia']);
 
         if (empty($available_slots)) {
             Log::warning('[AwaitingLocationChoiceState] Unidade escolhida não possui horários.', ['unidade' => $chosen_unit['nomeFranquia']]);
+
+            // Limpa a escolha
+            $session->selected_unit_id = null;
+            $this->updateData($session, ['chosen_unit' => null]); // Salva o null (ambos JSON e coluna)
             $this->updateState($session, BookingState::AWAITING_LOCATION_CHOICE);
-            $this->updateData($session, ['chosen_unit' => null]);
+
             return "A unidade *{$chosen_unit['nomeFranquia']}* não tem horários disponíveis. Gostaria de escolher outra?";
         }
 

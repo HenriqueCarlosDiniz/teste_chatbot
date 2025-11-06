@@ -8,6 +8,7 @@ use App\Data\ConversationAnalysisDTO;
 use App\Models\ChatSession;
 use App\Services\SchedulingService;
 use Illuminate\Support\Facades\Log;
+use Carbon\Carbon; // Importa o Carbon
 
 class AwaitingConfirmationState extends AbstractStateHandler implements StateHandler
 {
@@ -20,23 +21,33 @@ class AwaitingConfirmationState extends AbstractStateHandler implements StateHan
 
     public function handle(string $message, ChatSession $session, ?ConversationAnalysisDTO $analysis): string
     {
-        Log::info('[AwaitingConfirmationState] Analisando resposta de confirmação.', ['intent' => $analysis->intent]);
+        Log::info('[AwaitingConfirmationState] Analisando resposta de confirmação.', ['intent' => $analysis?->intent]);
 
         if ($analysis?->intent === 'afirmativa') {
-            $data = $session->state['data'];
+            // --- INÍCIO DA ATUALIZAÇÃO ---
+            // Lê dados das colunas dedicadas e do JSON de estado
+            $data = $session->state['data'] ?? [];
 
+            $nome = $session->customer_name ?? $data['user_name'];
+            $telefone_completo = $session->customer_phone ?? $data['full_phone'];
+            $datetime = Carbon::parse($session->selected_datetime ?? $data['chosen_date'] . ' ' . $data['chosen_time']);
+            $unidade_id = $session->selected_unit_id ?? $data['chosen_unit']['grupoFranquia'];
+
+            // Prepara o payload com os dados corretos
             $payload = [
-                'name' => $data['user_name'],
-                'ddd' => $data['user_ddd'],
-                'phone' => $data['user_phone'],
-                'date' => $data['chosen_date'],
-                'time' => $data['chosen_time'],
-                'unit_franchise_group' => $data['chosen_unit']['grupoFranquia'],
-                // Adiciona o token de cancelamento se estiver presente na sessão (fluxo de reagendamento)
+                'name' => $nome,
+                'ddd' => substr($telefone_completo, 0, 2),
+                'phone' => substr($telefone_completo, 2),
+                'date' => $datetime->format('Y-m-d'),
+                'time' => $datetime->format('H:i'),
+                'unit_franchise_group' => $unidade_id,
                 'cancellation_token' => $data['cancellation_token_for_reschedule'] ?? null,
             ];
+            // --- FIM DA ATUALIZAÇÃO ---
 
             $result = $this->scheduling_service->criarAgendamento($payload);
+
+            // Esta função (definida no AbstractStateHandler) agora também limpa as colunas.
             $this->clearConversationState($session);
 
             $success_message = "Perfeito! Seu agendamento foi confirmado.";

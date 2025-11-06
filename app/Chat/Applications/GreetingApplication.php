@@ -21,12 +21,18 @@ class GreetingApplication implements ChatApplicationInterface
      * Retorna a mensagem de saudação.
      * Esta é uma ação "sem estado" e não deve modificar o estado da sessão.
      */
-    public function handle(string $message, ChatSession $session): string
+        public function handle(string $message, ChatSession $session): string
     {
         Log::info('[GreetingApplication] Manipulando a mensagem de saudação.');
 
-        // A aplicação de saudação não define um 'flow', permitindo que a
-        // próxima mensagem do usuário seja analisada do zero pelo orquestrador.
-        return "Olá! Sou o assistente de agendamento da Pés Sem Dor. Gostaria de agendar uma avaliação?";
+        $session->current_application = BookingApplication::class;
+
+        $session->save();
+
+        Log::info('[GreetingApplication] Sessão atualizada para iniciar o BookingFlow.', [
+            'new_application' => $session->current_application,
+        ]);
+
+        return 'Olá! Sou o assistente de agendamento da Pés Sem Dor. Gostaria de agendar uma avaliação?';
     }
 }

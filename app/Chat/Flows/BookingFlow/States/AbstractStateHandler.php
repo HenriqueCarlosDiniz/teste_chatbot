@@ -20,11 +20,16 @@ abstract class AbstractStateHandler
         $state = $session->state ?? [];
         $state['flow_state'] = $new_state;
         $session->state = $state;
+
+        // Se updateData não for chamado, precisamos salvar aqui.
+        // Para garantir, chamamos save() independentemente.
         $session->save();
     }
 
     /**
      * Atualiza os dados armazenados na sessão.
+     * Este método agora também salva quaisquer alterações
+     * feitas diretamente no objeto $session (ex: $session->customer_name).
      */
     protected function updateData(ChatSession $session, array $data): void
     {
@@ -35,11 +40,15 @@ abstract class AbstractStateHandler
     }
 
     /**
-     * Limpa o estado da conversa na sessão.
+     * Limpa o estado da conversa na sessão, incluindo as colunas dedicadas.
      */
     protected function clearConversationState(ChatSession $session): void
     {
         $session->state = null;
+        $session->customer_name = null;
+        $session->customer_phone = null;
+        $session->selected_unit_id = null;
+        $session->selected_datetime = null;
         $session->save();
     }
 
@@ -82,11 +91,43 @@ abstract class AbstractStateHandler
 
     /**
      * Gera o texto de confirmação do agendamento.
+     * ATUALIZADO: Agora lê das colunas dedicadas da sessão,
+     * com fallback para o JSON state_data.
      */
     protected function getConfirmationText(ChatSession $session): string
     {
-        $data = $session->state['data'];
-        $date = Carbon::parse($data['chosen_date'])->translatedFormat('d/m/Y');
-        return "Vamos confirmar os dados?\n\n*Unidade:* {$data['chosen_unit']['nomeFranquia']}\n*Data:* {$date}\n*Horário:* {$data['chosen_time']}\n*Nome:* {$data['user_name']}\n*Telefone:* {$data['full_phone']}\n\nEstá tudo correto? (Sim/Não)";
+        $data = $session->state['data'] ?? [];
+
+        // Lê das novas colunas com fallback para o JSON
+        $nome = $session->customer_name ?? $data['user_name'] ?? 'Não informado';
+        $telefone = $session->customer_phone ?? $data['full_phone'] ?? 'Não informado';
+
+        // A 'chosen_unit' (com o nome) ainda virá do state_data
+        $unidade_nome = $data['chosen_unit']['nomeFranquia'] ?? 'Não informada';
+
+        // Formata a data/hora da nova coluna
+        if ($session->selected_datetime) {
+            try {
+                $datetime = Carbon::parse($session->selected_datetime);
+                $data_formatada = $datetime->translatedFormat('d/m/Y');
+                $hora_formatada = $datetime->format('H:i');
+            } catch (\Exception $e) {
+                // Fallback em caso de data inválida
+                $data_formatada = $data['chosen_date'] ?? 'Não informada';
+                $hora_formatada = $data['chosen_time'] ?? 'Não informada';
+            }
+        } else {
+            // Fallback para o JSON se a coluna for nula
+            $data_formatada = isset($data['chosen_date']) ? Carbon::parse($data['chosen_date'])->translatedFormat('d/m/Y') : 'Não informada';
+            $hora_formatada = $data['chosen_time'] ?? 'Não informada';
+        }
+
+        return "Vamos confirmar os dados?\n\n" .
+            "*Unidade:* {$unidade_nome}\n" .
+            "*Data:* {$data_formatada}\n" .
+            "*Horário:* {$hora_formatada}\n" .
+            "*Nome:* {$nome}\n" .
+            "*Telefone:* {$telefone}\n\n" .
+            "Está tudo correto? (Sim/Não)";
     }
 }

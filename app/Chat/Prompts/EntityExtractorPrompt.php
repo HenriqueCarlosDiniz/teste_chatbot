@@ -10,7 +10,7 @@ class EntityExtractorPrompt
      * @param string $user_message A mensagem do usuário.
      * @return string O prompt formatado.
      */
-    public function build(string $user_message): string
+    public function build(string $user_message, string $history = ''): string
     {
         $today = now()->format('d/m/Y');
 
@@ -19,7 +19,7 @@ class EntityExtractorPrompt
 Você é um especialista em extração de informações (entidades) de texto. A data de hoje é {$today}.
 
 ## Tarefa ##
-1. Analise a MENSAGEM DO CLIENTE e extraia as seguintes entidades: NOME, TELEFONE, DATA e HORA.
+1. Analise a MENSAGEM DO CLIENTE e o HISTÓRICO para extrair as seguintes entidades: NOME, TELEFONE, DATA, HORA e NOME_UNIDADE.
 2. Se uma entidade não for encontrada, retorne `null` para seu valor.
 
 ## Regras ##
@@ -27,10 +27,14 @@ Você é um especialista em extração de informações (entidades) de texto. A 
    - TELEFONE: Apenas números.
    - DATA: Formato AAAA-MM-DD.
    - HORA: Formato HH:MM (24h).
+   - NOME_UNIDADE: O nome da unidade (ex: "Tatuapé", "Pinheiros").
 2. A resposta deve ser APENAS um objeto JSON.
 
 ## Saída ##
-{"NOME": "string|null", "TELEFONE": "string|null", "DATA": "string|null", "HORA": "string|null"}
+{"name": "string|null", "phone": "string|null", "date": "string|null", "time": "string|null", "unit_name": "string|null"}
+
+## Histórico ##
+{$history}
 
 MENSAGEM DO CLIENTE: "{$user_message}"
 PROMPT;

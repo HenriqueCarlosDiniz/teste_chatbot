@@ -23,7 +23,15 @@ class InitialState extends AbstractStateHandler implements StateHandler
 
     public function handle(string $message, ChatSession $session, ?ConversationAnalysisDTO $analysis): string
     {
-        // No estado inicial, verificamos se a primeira mensagem já contém uma localização.
+        $location_data = $this->prompt_manager->extractLocation($message, $session->id);
+
+        if ($location_data && $location_data->type !== 'unknown' && $location_data->value) {
+            // Se sim, já podemos pular para o estado AWAITING_LOCATION para processar.
+            $this->updateState($session, BookingState::AWAITING_LOCATION);
+            $awaitingLocationState = app(AwaitingLocationState::class);
+            return $awaitingLocationState->handle($message, $session, $analysis);
+        }
+
         $entities = $this->prompt_manager->extractEntities($message, $session->id, $session->getFormattedHistory());
 
         if ($entities && $entities->location_type && $entities->location_value) {

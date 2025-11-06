@@ -28,13 +28,17 @@ class AwaitingLocationState extends AbstractStateHandler implements StateHandler
 
     public function handle(string $message, ChatSession $session, ?ConversationAnalysisDTO $analysis): string
     {
-        $entities = $this->prompt_manager->extractEntities($message, $session->id, $session->getFormattedHistory());
+        $location_data = $this->prompt_manager->extractLocation($message, $session->id);
 
-        if (!$entities || !$entities->location_type || !$entities->location_value) {
+        if (!$location_data || $location_data->type === 'unknown' || !$location_data->value) {
+            Log::warning('[AwaitingLocationState] Não foi possível extrair uma localização válida.', [
+                'session_id' => $session->id,
+                'location_data' => $location_data?->toArray()
+            ]);
             return "Não consegui entender a localização. Por favor, envie o nome de um estado, cidade ou CEP.";
         }
 
-        return $this->processLocationSearch($session, $entities->location_type, $entities->location_value);
+        return $this->processLocationSearch($session, $location_data->type, $location_data->value);
     }
 
     private function processLocationSearch(ChatSession $session, string $location_type, string $location_value): string
@@ -65,7 +69,7 @@ class AwaitingLocationState extends AbstractStateHandler implements StateHandler
             $filtered_units = $this->scheduling_service->filtrarUnidades($all_units, estado: $location_value);
             $context = "no estado de {$location_value}";
             $this->updateData($session, ['criterios_atuais' => ['estado' => $location_value]]);
-        } else { // city or neighborhood
+        } else { // city or neighborhood (se o DTO for atualizado para permitir)
             $filtered_units = $this->scheduling_service->filtrarUnidades($all_units, cidade: $location_value);
             $context = "na cidade de {$location_value}";
             $this->updateData($session, ['criterios_atuais' => ['cidade' => $location_value]]);

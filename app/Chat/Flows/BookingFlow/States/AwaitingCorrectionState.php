@@ -30,26 +30,45 @@ class AwaitingCorrectionState extends AbstractStateHandler implements StateHandl
         switch ($correction_field) {
             case 'unidade':
                 unset($data['chosen_unit'], $data['unidades_filtradas'], $data['criterios_atuais']);
-                $this->updateData($session, $data);
+                // --- ATUALIZAÇÃO ---
+                $session->selected_unit_id = null;
+                $this->updateData($session, $data); // Salva o null e o JSON
+                // --- FIM ---
                 $this->updateState($session, BookingState::AWAITING_LOCATION);
                 return "Ok, vamos corrigir a unidade. Por favor, informe novamente a cidade ou estado.";
 
             case 'data':
                 unset($data['chosen_date'], $data['chosen_time']);
-                $this->updateData($session, $data);
+                // --- ATUALIZAÇÃO ---
+                $session->selected_datetime = null;
+                $this->updateData($session, $data); // Salva o null e o JSON
+                // --- FIM ---
                 $this->updateState($session, BookingState::AWAITING_DATE_TIME);
+                // Validação: Garante que 'chosen_unit' existe antes de aceder 'grupoFranquia'
+                if (!isset($data['chosen_unit']['grupoFranquia'])) {
+                    Log::error('[AwaitingCorrectionState] Tentou corrigir a data, mas ' .
+                        'chosen_unit não estava definido na sessão.', ['session_id' => $session->id]);
+                    $this->updateState($session, BookingState::AWAITING_LOCATION);
+                    return "Parece que houve um erro. Vamos tentar de novo. Qual a cidade ou estado?";
+                }
                 $horarios = $this->scheduling_service->obterHorariosDisponiveisPorPeriodo($data['chosen_unit']['grupoFranquia']);
                 return "Certo, vamos alterar a data e hora. " . $this->formatAvailableSlots($horarios, $data['chosen_unit']['nomeFranquia']);
 
             case 'nome':
                 unset($data['user_name']);
-                $this->updateData($session, $data);
+                // --- ATUALIZAÇÃO ---
+                $session->customer_name = null;
+                $this->updateData($session, $data); // Salva o null e o JSON
+                // --- FIM ---
                 $this->updateState($session, BookingState::AWAITING_NAME);
                 return "Entendido. Por favor, informe o seu nome completo correto.";
 
             case 'telefone':
                 unset($data['user_phone'], $data['user_ddd'], $data['full_phone']);
-                $this->updateData($session, $data);
+                // --- ATUALIZAÇÃO ---
+                $session->customer_phone = null;
+                $this->updateData($session, $data); // Salva o null e o JSON
+                // --- FIM ---
                 $this->updateState($session, BookingState::AWAITING_PHONE);
                 return "Ok. Por favor, informe o número de telefone correto, com DDD.";
 
